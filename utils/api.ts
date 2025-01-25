@@ -1,7 +1,6 @@
 import axios, { type AxiosError } from "axios"
 
-// Define the Product type
-type Product = {
+export type Product = {
   id: string
   name: string
   description: string
@@ -13,8 +12,8 @@ const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080",
   headers: {
     "Content-Type": "application/json",
-    Authorization: process.env.NEXT_PUBLIC_AUTH_TOKEN || "",
   },
+  withCredentials: true,
 })
 
 export const getProducts = async (): Promise<Product[]> => {
@@ -24,7 +23,7 @@ export const getProducts = async (): Promise<Product[]> => {
     console.log("Received products:", response.data)
     return response.data
   } catch (error) {
-    console.error("Error fetching products:", error)
+    handleApiError(error, "Error fetching products")
     throw error
   }
 }
@@ -35,7 +34,7 @@ export const createProduct = async (product: Omit<Product, "id">): Promise<Produ
     console.log("Created product:", response.data)
     return response.data
   } catch (error) {
-    console.error("Error creating product:", error)
+    handleApiError(error, "Error creating product")
     throw error
   }
 }
@@ -46,7 +45,7 @@ export const updateProduct = async (id: string, product: Partial<Product>): Prom
     console.log("Updated product:", response.data)
     return response.data
   } catch (error) {
-    console.error("Error updating product:", error)
+    handleApiError(error, `Error updating product with id ${id}`)
     throw error
   }
 }
@@ -56,27 +55,54 @@ export const deleteProduct = async (id: string): Promise<void> => {
     await api.delete(`/products/${id}`)
     console.log("Deleted product with id:", id)
   } catch (error) {
-    console.error("Error deleting product:", error)
+    handleApiError(error, `Error deleting product with id ${id}`)
     throw error
   }
 }
 
-// Add a response interceptor for global error handling
+const handleApiError = (error: unknown, message: string) => {
+  if (axios.isAxiosError(error)) {
+    const axiosError = error as AxiosError
+    console.error(message, {
+      status: axiosError.response?.status,
+      statusText: axiosError.response?.statusText,
+      data: axiosError.response?.data,
+      config: {
+        url: axiosError.config?.url,
+        method: axiosError.config?.method,
+        headers: axiosError.config?.headers,
+      },
+    })
+    if (axiosError.response) {
+      console.error("Response data:", axiosError.response.data)
+    } else if (axiosError.request) {
+      console.error("No response received:", axiosError.request)
+    } else {
+      console.error("Error setting up request:", axiosError.message)
+    }
+  } else {
+    console.error(message, error)
+  }
+}
+
 api.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response) {
-      console.error("API Error:", error.response.status, error.response.data)
-      console.error("Request URL:", error.config?.url)
-      console.error("Request Method:", error.config?.method)
-      console.error("Request Headers:", error.config?.headers)
-    } else if (error.request) {
-      console.error("No response received:", error.request)
-    } else {
-      console.error("Error setting up request:", error.message)
-    }
+    handleApiError(error, "API Error")
+    return Promise.reject(error)
+  },
+)
+
+api.interceptors.request.use(
+  (config) => {
+    console.log("Making request to:", config.url)
+    return config
+  },
+  (error) => {
+    console.error("Request setup error:", error.message)
     return Promise.reject(error)
   },
 )
 
 export default api
+
